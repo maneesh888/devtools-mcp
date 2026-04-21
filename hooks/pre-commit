@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Git pre-commit hook: blocks commits with design system and localization violations.
+
+Calls the same review module used by the MCP server. Scans staged
+Swift/ObjC files for:
+- Design system violations (hardcoded colors, fonts, system colors)
+- Localization violations (missing keys, hardcoded strings, old format keys)
+
+Errors block the commit. Warnings are printed but allowed through.
+
+Installation:
+    cp hooks/pre-commit /path/to/your-ios-project/.git/hooks/pre-commit
+    chmod +x /path/to/your-ios-project/.git/hooks/pre-commit
+
+Or symlink:
+    ln -sf /path/to/devtools-mcp/hooks/pre-commit /path/to/your-ios-project/.git/hooks/pre-commit
+"""
+
+import os
+import sys
+
+# Add the MCP server source to the path so we can import the reviewer
+# Adjust this path if your devtools-mcp checkout is elsewhere.
+MCP_SRC = os.path.expanduser(
+    "~/path/to/devtools-mcp/src"
+)
+if MCP_SRC not in sys.path:
+    sys.path.insert(0, MCP_SRC)
+
+try:
+    from devtools_mcp.review.reviewer import review_staged
+except ImportError:
+    print("WARNING: DevTools MCP reviewer not found. Skipping pre-commit check.")
+    print(f"  Expected at: {MCP_SRC}/devtools_mcp/review/reviewer.py")
+    sys.exit(0)  # Don't block commit if reviewer isn't installed
+
+# The hook runs from the repo root
+project_path = os.getcwd()
+result = review_staged(project_path)
+
+if result.issue_count == 0:
+    # Clean, let the commit proceed
+    sys.exit(0)
+
+# Group issues by category type for clear output
+design_issues = [i for i in result.issues if not i.category.startswith("localization_")]
+loc_issues = [i for i in result.issues if i.category.startswith("localization_")]
+
+errors = [i for i in result.issues if i.severity == "error"]
+warnings = [i for i in result.issues if i.severity == "warning"]
+infos = [i for i in result.issues if i.severity == "info"]
+
+
+def _print_issues(issues, label):
+    if not issues:
+        return
+    for issue in issues:
+        rel = os.path.relpath(issue.file, project_path)
+        loc = f"{rel}:{issue.line}" if issue.line else rel
+        print(f"  {label}  {loc}")
+        print(f"         [{issue.category}] {issue.message}")
+        if issue.code and issue.code.strip() != issue.category:
+            print(f"         Code: {issue.code.strip()}")
+        if issue.suggested_fix:
+            print(f"         Fix: {issue.suggested_fix}")
+        print()
+
+
+# Design system section
+if design_issues:
+    print("\n-- Design System Review --------------------------------------\n")
+    _print_issues([i for i in design_issues if i.severity == "error"], "ERROR")
+    _print_issues([i for i in design_issues if i.severity == "warning"], "WARN ")
+
+# Localization section
+if loc_issues:
+    print("\n-- Localization Review ---------------------------------------\n")
+    _print_issues([i for i in loc_issues if i.severity == "error"], "ERROR")
+    _print_issues([i for i in loc_issues if i.severity == "warning"], "WARN ")
+    _print_issues([i for i in loc_issues if i.severity == "info"], "INFO ")
+
+# Summary
+print("-- Summary ---------------------------------------------------\n")
+print(f"  Files checked: {len(result.files_reviewed)}")
+print(f"  Errors: {len(errors)}  Warnings: {len(warnings)}  Info: {len(infos)}")
+
+if design_issues:
+    design_errors = sum(1 for i in design_issues if i.severity == "error")
+    design_warns = sum(1 for i in design_issues if i.severity == "warning")
+    print(f"  Design System: {design_errors} errors, {design_warns} warnings")
+
+if loc_issues:
+    loc_errors = sum(1 for i in loc_issues if i.severity == "error")
+    loc_warns = sum(1 for i in loc_issues if i.severity == "warning")
+    loc_infos = sum(1 for i in loc_issues if i.severity == "info")
+    print(f"  Localization: {loc_errors} errors, {loc_warns} warnings, {loc_infos} info")
+
+print()
+
+if errors:
+    print("  Commit BLOCKED. Fix the errors above, then try again.")
+    print("  To bypass (not recommended): git commit --no-verify")
+    print()
+    sys.exit(1)
+else:
+    # Warnings/info only, allow commit but print notice
+    print("  No errors. Commit allowed, but please review the warnings above.")
+    print()
+    sys.exit(0)

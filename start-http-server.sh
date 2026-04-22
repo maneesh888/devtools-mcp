@@ -5,7 +5,7 @@ set -e
 
 # Configuration
 export DEVTOOLS_MCP_TRANSPORT=sse
-export DEVTOOLS_MCP_PORT=${DEVTOOLS_MCP_PORT:-8080}
+export DEVTOOLS_MCP_PORT=${DEVTOOLS_MCP_PORT:-8888}
 export DEVTOOLS_MCP_HOST=${DEVTOOLS_MCP_HOST:-0.0.0.0}
 
 # iOS project settings (customize these or set via environment variables)

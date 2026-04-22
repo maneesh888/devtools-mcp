@@ -1,123 +1,89 @@
 # DevTools MCP Server
 
-A comprehensive MCP (Model Context Protocol) server for full-stack development, providing build automation, testing, and workflow tools for AI agents across all platforms.
+An MCP (Model Context Protocol) server that gives AI agents real development tools: build automation, simulator/emulator management, code quality audits, and Xcode control. One server, multiple platforms.
 
-**Current Status:**
-- ✅ **iOS**: Complete (build, run, audit, demo tools)
-- 🚧 **Android**: Planned (gradle, emulator, APK management)
-- 🚧 **Web**: Planned (Playwright/Cypress, build tools, deployment)
-- 🚧 **Server**: Planned (API testing, Docker, deployment automation)
+## Current Status
 
-## Features
+- **iOS**: Build, run, audit, Xcode automation
+- **Android**: In progress (Gradle, emulator, APK, Kotlin lint)
+- **Web**: Planned (Vite/Next.js builds, testing, deploy)
+- **Server/Backend**: Planned (Docker, API testing, migrations)
 
-### Mobile (iOS ✅ | Android 🚧)
+## What It Does
 
-#### iOS Tools Available Now
-- **Build & Run**: xcodebuild orchestration with structured error parsing
-- **Xcode Automation**: AppleScript run/stop controls (Cmd+R, Cmd+.)
-- **Simulator Management**: List and target iOS simulators
-- **Code Quality**: Pre-commit audits (Swift hygiene, design system, file metadata)
-- **Demo Tools**: Quick VC switching for testing
+AI agents (Claude Code, OpenClaw, etc.) can't run xcodebuild, manage simulators, or trigger Xcode. This MCP server bridges that gap.
 
-#### Android Tools (Planned)
-- Gradle build orchestration
-- Emulator/device management
-- APK/AAB build and installation
-- Kotlin/Java code quality checks
+**iOS tools available now:**
 
-### Web (Planned)
-- **Browser Automation**: Playwright/Cypress test execution
-- **Build Tools**: Vite/Next.js/React build orchestration
-- **Deployment**: Vercel/Netlify/custom deployment helpers
-- **E2E Testing**: Cross-browser test execution and reporting
-
-### Server (Planned)
-- **API Testing**: REST/GraphQL endpoint testing
-- **Container Tools**: Docker build/run/compose orchestration
-- **Deployment**: SSH-based deployment automation
-- **Monitoring**: Health check runners, log parsing
+- `ios_build` - Build for simulator with structured error parsing (file, line, column, message). Auto-runs in Xcode on success.
+- `ios_list_simulators` - List available simulators with UDID, state, OS version.
+- `xcode_run_app` / `xcode_stop_app` - Send Cmd+R / Cmd+. to Xcode via AppleScript.
+- `audit_changed_files` - Pre-commit audits: design system compliance, Swift hygiene (print/try!/fatalError/TODO), file metadata checks. Designed to run in parallel with builds.
 
 ## Setup
 
-### 1. Install
 ```bash
 cd devtools-mcp
 python3 -m venv .venv
 .venv/bin/pip install -e .
 ```
 
-### 2. Configure MCP Client
+### Configure Your MCP Client
 
-Add to your MCP config (e.g., `~/.config/Claude/claude_desktop_config.json`):
+Add to your MCP config:
 
 ```json
 {
   "mcpServers": {
     "devtools": {
-      "command": "/absolute/path/to/devtools-mcp/.venv/bin/devtools-mcp",
-      "args": [],
+      "command": "/path/to/devtools-mcp/.venv/bin/devtools-mcp",
       "env": {
         "DEVTOOLS_IOS_PROJECT": "/path/to/YourApp.xcodeproj",
         "DEVTOOLS_IOS_SCHEME": "YourScheme",
-        "DEVTOOLS_IOS_CONFIGURATION": "Debug",
-        "DEVTOOLS_IOS_SIMULATOR": "iPhone 17 Pro"
+        "DEVTOOLS_IOS_SIMULATOR": "iPhone 16 Pro"
       }
     }
   }
 }
 ```
 
-### 3. Restart Your AI Client
+Or pass `project_path` and `scheme` directly when calling tools.
 
-Tools will populate based on available platforms.
+### Multi-Project Support
 
-## Current Tools (iOS)
+Create a `mcp_helper.json` in the repo root to map container paths to host paths:
 
-- `ios_build` — Build for simulator with error parsing
-- `ios_list_simulators` — List available simulators
-- `xcode_run_app` — Send Cmd+R to Xcode
-- `xcode_stop_app` — Send Cmd+. to Xcode
-- `audit_changed_files` — Pre-commit code quality checks
-- `demo_set_launch_vc` / `demo_get_launch_vc` — Testing helpers
+```json
+{
+  "host_workspace": "/Users/you/Projects"
+}
+```
+
+Useful when the MCP server runs on a host Mac but agents run in Docker. The agent reads this file to translate its local paths to host-side paths for MCP calls.
+
+## Remote Access (SSE Mode)
+
+For container-to-host setups (e.g., AI agents in Docker calling Xcode on the host Mac):
+
+```bash
+.venv/bin/devtools-mcp --transport sse --port 7888
+```
+
+Agents connect via `http://host.docker.internal:7888/sse`. See [HTTP_SERVER.md](HTTP_SERVER.md) for details.
 
 ## Project Structure
 
 ```
 src/devtools_mcp/
-├── server.py              # MCP tool registry
-├── platforms/
-│   ├── base.py            # Platform driver interface
-│   ├── ios.py             # iOS/Xcode driver ✅
-│   ├── android.py         # Android/Gradle driver (planned)
-│   ├── web.py             # Web build/test driver (planned)
-│   └── server.py          # Server/API testing driver (planned)
-├── audit/                 # Code quality checks
-├── xcode_control.py       # iOS-specific AppleScript automation
-└── demo.py                # iOS-specific demo helpers
+  server.py              # MCP tool registry and entry point
+  platforms/
+    base.py              # Shared BuildResult/BuildError types
+    ios.py               # iOS/Xcode driver
+    android.py           # Android/Gradle driver (in progress)
+    web.py               # Web driver (planned)
+  audit/                 # Code quality checks
+  xcode_control.py       # AppleScript automation for Xcode
 ```
-
-## Remote Access (HTTP Mode)
-
-For **container-to-host** access (e.g., OpenClaw/Clawdbot running in Docker accessing host Xcode):
-
-```bash
-# On host (macOS)
-./start-http-server.sh
-```
-
-Server runs on `http://0.0.0.0:8080`. Container accesses via `http://host.docker.internal:8080`.
-
-See **[HTTP_SERVER.md](HTTP_SERVER.md)** for:
-- OpenClaw/Clawdbot configuration
-- Auto-start on boot (LaunchDaemon)
-- Environment variables
-
-## Documentation
-
-- **[SETUP.md](SETUP.md)** — Detailed setup and environment variables
-- **[ROADMAP.md](ROADMAP.md)** — Implementation status and future plans
-- **[PLATFORMS.md](PLATFORMS.md)** — Platform-specific guides
-- **[HTTP_SERVER.md](HTTP_SERVER.md)** — Remote access and HTTP mode
 
 ## Development
 
@@ -126,6 +92,6 @@ See **[HTTP_SERVER.md](HTTP_SERVER.md)** for:
 .venv/bin/pytest
 ```
 
----
+## License
 
-*One MCP server for your entire dev stack.*
+MIT

@@ -7,6 +7,7 @@ import subprocess
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass, field
+from typing import Optional
 
 
 @dataclass
@@ -36,7 +37,13 @@ class BuildResult:
         # Strip DerivedData paths to just filename
         if "DerivedData" in path:
             return os.path.basename(path)
-        # Could add project-specific path stripping here if needed
+        # Strip project prefix: /some/root/MyApp/MyApp/... → MyApp/...
+        # Xcode projects commonly nest a source folder with the same name
+        # as the .xcodeproj parent directory.
+        parts = path.replace("\\", "/").split("/")
+        for i in range(len(parts) - 1):
+            if parts[i] and parts[i] == parts[i + 1]:
+                return "/".join(parts[i + 1:])
         return path
 
     def _grouped_warnings(self) -> list[dict]:
@@ -112,12 +119,15 @@ class PlatformDriver(ABC):
         """List available devices/emulators/browsers for this platform."""
 
     @staticmethod
-    def run_cmd(args: list[str], timeout: int = 600) -> tuple[int, str, str]:
+    def run_cmd(
+        args: list[str], timeout: int = 600, cwd: Optional[str] = None
+    ) -> tuple[int, str, str]:
         """Run a subprocess and return (returncode, stdout, stderr)."""
         proc = subprocess.run(
             args,
             capture_output=True,
             text=True,
             timeout=timeout,
+            cwd=cwd,
         )
         return proc.returncode, proc.stdout, proc.stderr

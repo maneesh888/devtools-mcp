@@ -15,7 +15,10 @@ Current status:
 
 import json
 import os
+import shlex
 import subprocess
+from functools import lru_cache
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
@@ -38,6 +41,21 @@ mcp = FastMCP("devtools-mcp")
 # ---------------------------------------------------------------------------
 ios = IOSDriver()
 android = AndroidDriver()
+
+# ---------------------------------------------------------------------------
+# Project config
+# ---------------------------------------------------------------------------
+
+
+@lru_cache(maxsize=1)
+def _load_projects_config() -> dict:
+    default = Path(__file__).resolve().parents[2] / "mcp_helper.json"
+    config_path = Path(os.environ.get("DEVTOOLS_PROJECTS_CONFIG", default))
+    if not config_path.exists():
+        return {}
+    with config_path.open() as f:
+        return json.load(f)
+
 
 # ---------------------------------------------------------------------------
 # iOS Tools
@@ -328,6 +346,203 @@ def xcode_stop_app() -> str:
     Stops the currently running debug session in Xcode.
     """
     return json.dumps(xc_stop(), indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Gateway Management Tools
+# ---------------------------------------------------------------------------
+
+
+def _gateway_cwd() -> Path:
+    cfg = _load_projects_config()
+    workspace = cfg.get("host_workspace", str(Path.home()))
+    return Path(workspace) / "llm-gateway"
+
+
+def _gateway_log_dir() -> Path:
+    cfg = _load_projects_config()
+    return Path(cfg.get("log_dir", "/tmp"))
+
+
+@mcp.tool()
+def gateway_build() -> str:
+    """Build the LLM gateway (npm install + npm run build).
+
+    Uses host_workspace/llm-gateway from mcp_helper.json.
+    Returns JSON with stdout, stderr, exit_code, and success.
+    """
+    cwd = _gateway_cwd()
+    try:
+        install = subprocess.run(
+            ["npm", "install"],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if install.returncode != 0:
+            return json.dumps(
+                {
+                    "stdout": install.stdout,
+                    "stderr": install.stderr,
+                    "exit_code": install.returncode,
+                    "success": False,
+                    "stage": "npm install",
+                },
+                indent=2,
+            )
+
+        build = subprocess.run(
+            ["npm", "run", "build"],
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        return json.dumps(
+            {
+                "stdout": build.stdout,
+                "stderr": build.stderr,
+                "exit_code": build.returncode,
+                "success": build.returncode == 0,
+                "stage": "npm run build",
+            },
+            indent=2,
+        )
+    except subprocess.TimeoutExpired as e:
+        return json.dumps({"error": f"Build timed out: {e}", "exit_code": -1, "success": False}, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e), "exit_code": -1, "success": False}, indent=2)
+
+
+@mcp.tool()
+def gateway_start(port: int = 0) -> str:
+    """Start the LLM gateway server in the background (npm start).
+
+    Uses host_workspace/llm-gateway from mcp_helper.json.
+    Port priority: 1) Function param, 2) GATEWAY_PORT env var, 3) Default 8081
+    Returns JSON with pid and status.
+
+    Args:
+        port: Port to listen on (default: use GATEWAY_PORT env or 8081).
+    """
+    env_port = os.environ.get("GATEWAY_PORT")
+    if port == 0:
+        port = int(env_port) if env_port and env_port.isdigit() else 8081
+
+    cwd = _gateway_cwd()
+    try:
+        proc_env = {**os.environ, "PORT": str(port)}
+        log_path = _gateway_log_dir() / "llm-gateway.log"
+        log_fh = open(str(log_path), "w")  # noqa: SIM115
+        proc = subprocess.Popen(
+            ["npm", "start"],
+            cwd=str(cwd),
+            env=proc_env,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+        )
+        return json.dumps({"pid": proc.pid, "status": "started", "port": port}, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e), "status": "failed"}, indent=2)
+
+
+@mcp.tool()
+def gateway_stop() -> str:
+    """Stop the LLM gateway server.
+
+    Kills the process recorded in <log_dir>/llm-gateway.pid if it exists.
+    """
+    pid_file = _gateway_log_dir() / "llm-gateway.pid"
+    try:
+        if pid_file.exists():
+            pid = int(pid_file.read_text().strip())
+            os.kill(pid, 15)  # SIGTERM
+            pid_file.unlink(missing_ok=True)
+            return json.dumps({"success": True, "message": f"Stopped gateway (pid {pid})"}, indent=2)
+        else:
+            return json.dumps({"success": False, "message": "No PID file found, gateway may not be running"}, indent=2)
+    except ProcessLookupError:
+        pid_file.unlink(missing_ok=True)
+        return json.dumps({"success": True, "message": "Process already gone, cleaned up PID file"}, indent=2)
+    except Exception as e:
+        return json.dumps({"success": False, "error": str(e)}, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# CI Tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def list_projects() -> str:
+    """List available projects and their allowed CI commands.
+
+    Returns JSON with project names and the CI commands registered for each.
+    """
+    cfg = _load_projects_config()
+    projects = cfg.get("projects", {})
+    return json.dumps(
+        {name: {"ci": info.get("ci", [])} for name, info in projects.items()},
+        indent=2,
+    )
+
+
+@mcp.tool()
+def run_ci(project_name: str, command: str) -> str:
+    """Run a whitelisted CI command for a project.
+
+    The command must be in the project's `ci` list in mcp_helper.json.
+    Runs in <host_workspace>/<project_name> with a 300 s timeout.
+
+    Returns JSON with stdout, stderr, and exit_code.
+
+    Args:
+        project_name: Key from mcp_helper.json projects (e.g. "llm-gateway").
+        command: CI command string exactly as listed (e.g. "npm test").
+    """
+    cfg = _load_projects_config()
+    projects = cfg.get("projects", {})
+
+    if project_name not in projects:
+        return json.dumps(
+            {"error": f"Unknown project '{project_name}'", "available": list(projects)},
+            indent=2,
+        )
+
+    allowed = projects[project_name].get("ci", [])
+    if command not in allowed:
+        return json.dumps(
+            {"error": f"Command not whitelisted for '{project_name}'", "allowed": allowed},
+            indent=2,
+        )
+
+    workspace = cfg.get("host_workspace", str(Path.home()))
+    cwd = Path(workspace) / project_name
+
+    try:
+        # Use shlex.split for safer execution. The command is validated
+        # against the exact whitelist above, so injection risk is minimal,
+        # but avoiding shell=True is still best practice.
+        proc = subprocess.run(
+            shlex.split(command),
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        return json.dumps(
+            {
+                "stdout": proc.stdout,
+                "stderr": proc.stderr,
+                "exit_code": proc.returncode,
+            },
+            indent=2,
+        )
+    except subprocess.TimeoutExpired:
+        return json.dumps({"error": "Command timed out after 300s", "exit_code": -1}, indent=2)
+    except Exception as e:
+        return json.dumps({"error": str(e), "exit_code": -1}, indent=2)
 
 
 # ---------------------------------------------------------------------------

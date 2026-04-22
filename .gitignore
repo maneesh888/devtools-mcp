@@ -46,3 +46,17 @@ htmlcov/
 
 # Claude Code worktrees
 .claude/worktrees/
+
+# Local config (contains personal workspace paths and project names)
+mcp_helper.json
+mcporter.json
+
+# Task planning documents
+TASK_*.md
+TASKS_INDEX.md
+FUTURE_FEATURES.md
+
+# Auto-start service files (machine-specific)
+*.plist
+install-auto-start.sh
+start-with-watcher.sh

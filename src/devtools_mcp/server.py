@@ -7,29 +7,21 @@ Provides tools that AI agents cannot do natively:
 - **Quality**: Code auditing, design system compliance, hygiene checks
 
 Current status:
-  ✅ iOS: Complete (build, run, audit, demo)
-  🚧 Android: Planned (gradle, emulator, APK)
+  ✅ iOS: Complete (build, run, audit)
+  ✅ Android: Complete (build, run, lint, test, audit)
   🚧 Web: Planned (Playwright, build, deploy)
   🚧 Server: Planned (API testing, Docker, SSH deploy)
 """
 
 import json
+import os
+import subprocess
 
 from mcp.server.fastmcp import FastMCP
 
+from .platforms.android import AndroidDriver
 from .platforms.ios import IOSDriver
 from .audit import audit_changed_files as run_audit
-# Localization tools available but not exposed yet
-# from .localization import (
-#     add_key as loc_add_key,
-#     check_key as loc_check_key,
-#     execute_migration as loc_execute_migration,
-#     read_xcstrings as loc_read_xcstrings,
-#     remove_old_key as loc_remove_old_key,
-#     search_keys as loc_search_keys,
-# )
-# from .localization.xcstrings import is_old_format as loc_is_old_format
-from .demo import switch_launch_vc, get_current_target, VALID_TARGETS
 from .xcode_control import (
     _stop_and_dismiss as xc_stop_and_dismiss,
     xcode_run as xc_run,
@@ -45,11 +37,7 @@ mcp = FastMCP("devtools-mcp")
 # Platform drivers
 # ---------------------------------------------------------------------------
 ios = IOSDriver()
-
-# Future platform drivers:
-# android = AndroidDriver()
-# web = WebDriver()
-# server = ServerDriver()
+android = AndroidDriver()
 
 # ---------------------------------------------------------------------------
 # iOS Tools
@@ -72,8 +60,7 @@ def ios_build(
 
     On success, automatically triggers Cmd+R in Xcode to run the app
     so you can test immediately with full Xcode debugging support.
-    Pass `run_after=False` to skip the auto-run — useful as a parallel
-    build-check alongside an audit without disrupting the simulator.
+    Pass `run_after=False` to skip the auto-run.
 
     Args:
         project_path: Path to .xcodeproj (defaults to env IOS_MCP_PROJECT)
@@ -92,7 +79,6 @@ def ios_build(
     result = ios.build(**kwargs)
     result_dict = result.to_dict()
 
-    # On successful build (unless suppressed), stop any running app then Cmd+R in Xcode
     if result.success and run_after:
         xc_stop_and_dismiss()
         run_result = xc_run()
@@ -106,6 +92,139 @@ def ios_list_simulators() -> str:
     """List all available iOS simulators with name, UDID, state, and OS version."""
     devices = ios.list_devices()
     return json.dumps(devices, indent=2)
+
+
+# ---------------------------------------------------------------------------
+# Android Tools
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool()
+def android_build(variant: str = "debug", clean: bool = False) -> str:
+    """Build Android app with Gradle.
+
+    Returns structured JSON with build success/failure, parsed errors
+    (with file path, line, column, message), warnings, and build log tail.
+
+    Args:
+        variant: Build variant (debug/release).
+        clean: Run clean before build.
+    """
+    result = android.build(variant=variant, clean=clean)
+    return json.dumps(result.to_dict(), indent=2)
+
+
+@mcp.tool()
+def android_list_emulators() -> str:
+    """List available Android emulators (AVDs).
+
+    Returns JSON array of AVDs with name, type, and status.
+    """
+    emulators = android.list_emulators()
+    return json.dumps(emulators, indent=2)
+
+
+@mcp.tool()
+def android_list_devices() -> str:
+    """List connected Android devices via adb.
+
+    Returns JSON array of devices with id, type, status, and info.
+    """
+    devices = android.list_devices()
+    return json.dumps(devices, indent=2)
+
+
+@mcp.tool()
+def android_start_emulator(avd_name: str = "") -> str:
+    """Start an Android emulator by AVD name.
+
+    Args:
+        avd_name: AVD name to boot. Uses DEVTOOLS_ANDROID_EMULATOR if empty.
+    """
+    name = avd_name if avd_name else None
+    success = android.start_emulator(name)
+    return json.dumps({"success": success})
+
+
+@mcp.tool()
+def android_install_apk(apk_path: str, device_id: str = "") -> str:
+    """Install APK on device/emulator.
+
+    Args:
+        apk_path: Path to the .apk file.
+        device_id: Target device serial. Uses default if empty.
+    """
+    did = device_id if device_id else None
+    success = android.install_apk(apk_path, did)
+    return json.dumps({"success": success})
+
+
+@mcp.tool()
+def android_run_app(
+    package_name: str,
+    activity_name: str,
+    device_id: str = "",
+) -> str:
+    """Launch Android app on device.
+
+    Args:
+        package_name: e.g. "com.example.myapp"
+        activity_name: e.g. ".MainActivity"
+        device_id: Target device serial. Uses default if empty.
+    """
+    did = device_id if device_id else None
+    success = android.run_app(package_name, activity_name, did)
+    return json.dumps({"success": success})
+
+
+@mcp.tool()
+def android_stop_app(package_name: str, device_id: str = "") -> str:
+    """Force-stop an Android app.
+
+    Args:
+        package_name: e.g. "com.example.myapp"
+        device_id: Target device serial. Uses default if empty.
+    """
+    did = device_id if device_id else None
+    success = android.stop_app(package_name, did)
+    return json.dumps({"success": success})
+
+
+@mcp.tool()
+def android_test(test_type: str = "unit") -> str:
+    """Run Android tests (unit or instrumented).
+
+    Returns JSON with total, passed, failed, skipped counts and failure details.
+
+    Args:
+        test_type: "unit" or "instrumented"
+    """
+    results = android.test(test_type)
+    return json.dumps(results, indent=2)
+
+
+@mcp.tool()
+def android_lint() -> str:
+    """Run Android Lint checks.
+
+    Returns structured JSON BuildResult with lint errors and warnings.
+    """
+    result = android.lint()
+    return json.dumps(result.to_dict(), indent=2)
+
+
+@mcp.tool()
+def audit_kotlin_hygiene(base_ref: str = "") -> str:
+    """Audit Kotlin code for anti-patterns.
+
+    Checks for: println() usage, !! null assertions, TODO/FIXME comments.
+
+    Args:
+        base_ref: If set, only audit files changed vs this git ref.
+    """
+    ref = base_ref if base_ref else None
+    issues = android.audit_kotlin_hygiene(ref)
+    return json.dumps(issues, indent=2)
 
 
 # ---------------------------------------------------------------------------
@@ -123,28 +242,25 @@ def audit_changed_files(
 ) -> str:
     """Composite audit + parallel build check + LLM-filtered review.
 
-    ENFORCED WORKFLOW (every call — no exceptions):
+    ENFORCED WORKFLOW (every call, no exceptions):
 
-    1. PARALLEL DISPATCH — in the SAME message that calls this tool, also
+    1. PARALLEL DISPATCH: in the SAME message that calls this tool, also
        invoke `ios_build(run_after=False)` as a second tool use. Build
        (~30-60s) runs concurrently with audit (~5s) so total wall-time
-       ≈ build time, not build + audit.
+       = build time, not build + audit.
 
-    2. When both return, review audit findings in code context: read ±5
+    2. When both return, review audit findings in code context: read +/-5
        lines around each flagged line, classify REAL / FALSE_POSITIVE /
        NEEDS_HUMAN. See `llm_review_guidance` in the result for FP rules.
 
     3. Report to user in this order:
-       a. Build status (✅ clean / ❌ failed — if failed, list errors
+       a. Build status (clean / failed, if failed list errors
           with file:line; build errors block commit regardless of audit).
        b. Real audit issues grouped by check, file:line + rationale + fix.
        c. Summary: "Build: ok/failed | X real | Y filtered | Z needs decision"
 
     NEVER dump raw JSON to the user. Only `paths` / `base_ref` vary between
-    invocations — the workflow is identical every time.
-
-    Single entry point for any "pre-commit audit", "pre-push audit",
-    "review my changes", or "audit this directory / these files" request.
+    invocations, the workflow is identical every time.
 
     Checks (all run by default):
       - design_system : stock UIColor/Color, raw RGB/hex literals, system
@@ -154,10 +270,7 @@ def audit_changed_files(
 
     Scope selection (in priority order):
       1. `paths` set   -> audit exactly those files/directories
-                          (directories walked recursively; build dirs skipped).
-                          Use this for "audit this folder" or "audit these files".
       2. `base_ref` set -> branch scope: all files changed vs the ref
-                           (e.g. base_ref='master' for pre-PR review).
       3. otherwise     -> pre-commit scope: uncommitted + staged changes.
 
     Args:
@@ -165,10 +278,8 @@ def audit_changed_files(
         checks: Subset of ['design_system','file_metadata','swift_hygiene'].
                 None = run all.
         base_ref: Optional git ref to diff against (e.g. 'master').
-                  Ignored when `paths` is provided.
-        xcstrings_path: Override for Localizable.xcstrings location (if using localization audit).
-        paths: Explicit files or directories to audit (absolute or relative
-               to project_path). When set, overrides git-based scoping.
+        xcstrings_path: Override for Localizable.xcstrings location.
+        paths: Explicit files or directories to audit.
     """
     result = run_audit(
         project_path=project_path,
@@ -185,51 +296,14 @@ def audit_and_review() -> str:
     """Trigger the full audit + parallel build + LLM review workflow."""
     return """Call `audit_changed_files` with the scope matching the user's ask:
 
-- "pre-commit audit" / "review my changes" → default (no `paths`, no `base_ref`)
-- "audit folder X" / "audit these files Y" → `paths=[...]`
-- "pre-PR audit vs master" → `base_ref='master'`
+- "pre-commit audit" / "review my changes" -> default (no `paths`, no `base_ref`)
+- "audit folder X" / "audit these files Y" -> `paths=[...]`
+- "pre-PR audit vs master" -> `base_ref='master'`
 
 The tool's docstring carries the full enforced workflow (parallel build
-dispatch + LLM review + report format). Follow it exactly — do NOT skip
+dispatch + LLM review + report format). Follow it exactly. Do NOT skip
 the parallel `ios_build(run_after=False)` dispatch in the same message.
 """
-
-
-# ---------------------------------------------------------------------------
-# Demo / VC Switcher Tools
-# ---------------------------------------------------------------------------
-
-
-@mcp.tool()
-def demo_set_launch_vc(target: str) -> str:
-    """Switch which view controller launches in the iOS app.
-
-    Rewrites AppFlow.swift's setLaunchScreen method to show the chosen VC.
-    Use this before a demo to quickly swap screens without manual code edits.
-
-    Valid targets depend on your project's AppFlow.swift configuration.
-    Common examples:
-      - normal    : production flow
-      - textfield : CustomTextFieldTableViewController
-      - baseform  : FormVCDemoViewController (UIKit)
-      - swiftuiform : SwiftUIFormDemoView (SwiftUI)
-      - tabs      : UITabBarController with test VCs
-
-    Args:
-        target: Target name (must match your AppFlow.swift targets).
-    """
-    result = switch_launch_vc(target)
-    return json.dumps(result, indent=2)
-
-
-@mcp.tool()
-def demo_get_launch_vc() -> str:
-    """Check which demo view controller is currently set in AppFlow.swift.
-
-    Returns the active target name and list of valid targets.
-    """
-    result = get_current_target()
-    return json.dumps(result, indent=2)
 
 
 # ---------------------------------------------------------------------------

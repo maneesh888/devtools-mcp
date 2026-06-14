@@ -4,8 +4,8 @@ An MCP (Model Context Protocol) server that gives AI agents real development too
 
 ## Current Status
 
-- **iOS**: Build, run, audit, Xcode automation
-- **Android**: In progress (Gradle, emulator, APK, Kotlin lint)
+- **iOS**: Build, run, audit, Xcode automation, simulator screenshots/logs
+- **Android**: Build, emulator/device management, APK install/run/stop, tests, lint, Kotlin hygiene audit
 - **Web**: Planned (Vite/Next.js builds, testing, deploy)
 - **Server/Backend**: Planned (Docker, API testing, migrations)
 
@@ -17,8 +17,21 @@ AI agents (Claude Code, OpenClaw, etc.) can't run xcodebuild, manage simulators,
 
 - `ios_build` - Build for simulator with structured error parsing (file, line, column, message). Auto-runs in Xcode on success.
 - `ios_list_simulators` - List available simulators with UDID, state, OS version.
+- `ios_simulator_screenshot` - Capture the current simulator screen to an artifact path for visual debugging.
+- `ios_simulator_logs` - Return a bounded simulator log tail with optional predicate filtering.
 - `xcode_run_app` / `xcode_stop_app` - Send Cmd+R / Cmd+. to Xcode via AppleScript.
 - `audit_changed_files` - Pre-commit audits: design system compliance, Swift hygiene (print/try!/fatalError/TODO), file metadata checks. Designed to run in parallel with builds.
+
+**Android tools available now:**
+
+- `android_build` - Build with Gradle and parse Kotlin, Java, resource, and Gradle failure output.
+- `android_list_emulators` / `android_list_devices` - List AVDs and connected adb devices.
+- `android_start_emulator` - Boot a configured AVD.
+- `android_install_apk` - Install an APK on a device or emulator.
+- `android_run_app` / `android_stop_app` - Launch or force-stop an Android app.
+- `android_test` - Run unit or instrumented tests and parse JUnit XML results.
+- `android_lint` - Run Android Lint and parse lint XML results.
+- `audit_kotlin_hygiene` - Flag `println`, `!!`, and TODO/FIXME markers in Kotlin files.
 
 ## Setup
 
@@ -79,8 +92,9 @@ src/devtools_mcp/
   platforms/
     base.py              # Shared BuildResult/BuildError types
     ios.py               # iOS/Xcode driver
-    android.py           # Android/Gradle driver (in progress)
+    android.py           # Android/Gradle driver
     web.py               # Web driver (planned)
+    server.py            # Server/backend driver (planned)
   audit/                 # Code quality checks
   xcode_control.py       # AppleScript automation for Xcode
 ```

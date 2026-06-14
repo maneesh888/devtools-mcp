@@ -25,14 +25,11 @@ export DEVTOOLS_IOS_CONFIGURATION="Debug"  # or "Release"
 export DEVTOOLS_IOS_SIMULATOR="iPhone 17 Pro"
 export DEVTOOLS_IOS_DERIVED_DATA="$HOME/Library/Developer/Xcode/DerivedData-MCP"
 
-# Optional: For demo VC switcher
-export DEVTOOLS_IOS_APPFLOW_PATH="/path/to/AppFlow.swift"
-
 # Optional: For localization tools (if enabled)
 export DEVTOOLS_IOS_XCSTRINGS="/path/to/Localizable.xcstrings"
 ```
 
-### Android Configuration (Planned)
+### Android Configuration
 
 ```bash
 export DEVTOOLS_ANDROID_PROJECT="/path/to/android-project"
@@ -111,7 +108,7 @@ ls -la .venv/bin/devtools-mcp
 2. Project must be buildable from command line (`xcodebuild`)
 3. Simulator must exist (check with `xcrun simctl list`)
 
-### Android (When Implemented)
+### Android
 1. Android SDK installed
 2. `ANDROID_HOME` or `ANDROID_SDK_ROOT` set
 3. Gradle wrapper in project root

@@ -10,7 +10,7 @@ DevTools MCP is a cross-platform development tooling server that provides build,
 2. **Consistent Interface**: All platforms implement the `PlatformDriver` base class
 3. **Environment-Driven**: Configuration via `DEVTOOLS_<PLATFORM>_<SETTING>` env vars
 4. **Incremental Implementation**: Platforms can be added/completed independently
-5. **Zero Cross-Contamination**: iOS-specific code (Xcode, demo, localization) stays in iOS module
+5. **Zero Cross-Contamination**: iOS-specific code (Xcode, localization) stays in iOS module
 
 ## Project Structure
 
@@ -32,7 +32,7 @@ devtools-mcp/
 │   │   ├── __init__.py
 │   │   ├── base.py        # PlatformDriver interface + BuildResult
 │   │   ├── ios.py         # ✅ iOS driver (xcodebuild, simctl)
-│   │   ├── android.py     # 🚧 Android driver (gradle, adb) [stub]
+│   │   ├── android.py     # ✅ Android driver (gradle, adb)
 │   │   ├── web.py         # 🚧 Web driver (Playwright, build) [stub]
 │   │   └── server.py      # 🚧 Server driver (Docker, API test) [stub]
 │   │
@@ -54,7 +54,6 @@ devtools-mcp/
 │   │   └── reviewer.py
 │   │
 │   ├── xcode_control.py   # iOS-specific AppleScript automation
-│   ├── demo.py            # iOS-specific demo VC switcher
 │   └── shared/            # Shared utilities
 │
 ├── tests/                 # Unit tests
@@ -192,7 +191,7 @@ See `platforms/ios.py` for a complete reference.
 | Platform | Driver | Tools | Audit | Tests | Docs |
 |----------|--------|-------|-------|-------|------|
 | iOS      | ✅     | ✅    | ✅    | ✅    | ✅   |
-| Android  | 🚧     | 🚧    | 🚧    | 🚧    | ✅   |
+| Android  | ✅     | ✅    | ✅    | ✅    | ✅   |
 | Web      | 🚧     | 🚧    | 🚧    | 🚧    | ✅   |
 | Server   | 🚧     | 🚧    | 🚧    | 🚧    | ✅   |
 

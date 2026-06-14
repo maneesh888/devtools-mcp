@@ -27,6 +27,10 @@ export DEVTOOLS_IOS_SIMULATOR="iPhone 17 Pro"
   
 - **`ios_list_simulators`** — List all simulators with UDID and state
 
+- **`ios_simulator_screenshot`** — Capture current simulator screen to a PNG artifact
+
+- **`ios_simulator_logs`** — Return a bounded simulator log tail with optional predicate filtering
+
 - **`xcode_run_app`** — Send Cmd+R to Xcode (starts debugging session)
 
 - **`xcode_stop_app`** — Send Cmd+. to Xcode (stops debugging)
@@ -36,10 +40,6 @@ export DEVTOOLS_IOS_SIMULATOR="iPhone 17 Pro"
   - Swift hygiene (print, try!, fatalError, TODO)
   - Design system (hardcoded colors, system fonts)
   - File metadata (AI headers, copyright)
-  
-#### Demo Tools
-- **`demo_set_launch_vc`** — Switch which VC launches (requires AppFlow.swift)
-- **`demo_get_launch_vc`** — Check current demo target
 
 ### Pre-Commit Hook
 
@@ -51,23 +51,57 @@ chmod +x .git/hooks/pre-commit
 
 ---
 
-## Android 🚧 (Planned)
+## Android ✅ (Available Now)
 
-### Prerequisites (When Implemented)
+### Prerequisites
 - Android Studio installed
 - Android SDK configured
 - `ANDROID_HOME` or `ANDROID_SDK_ROOT` set
 - At least one AVD created
+- Gradle wrapper available in the Android project root
 
-### Planned Tools
+### Environment Setup
+
+```bash
+export DEVTOOLS_ANDROID_PROJECT="/path/to/android-project"
+export DEVTOOLS_ANDROID_MODULE="app"
+export DEVTOOLS_ANDROID_BUILD_VARIANT="debug"
+export DEVTOOLS_ANDROID_EMULATOR="Pixel_7_API_34"
+export DEVTOOLS_ANDROID_SDK_ROOT="$HOME/Library/Android/sdk"
+```
+
+### Available Tools
+
+#### Build & Run
 
 - **`android_build`** — Gradle build with error parsing
-- **`android_list_emulators`** — List AVDs and connected devices
+  - Parses Kotlin, Java, resource, and Gradle failure output
+  - Returns structured JSON with errors, warnings, and build log tail
+
+- **`android_list_emulators`** — List available AVDs
+
+- **`android_list_devices`** — List connected adb devices
+
+- **`android_start_emulator`** — Boot a configured AVD
+
+- **`android_install_apk`** — Install APK to device/emulator
+
 - **`android_run_app`** — Launch app on emulator/device
+
 - **`android_stop_app`** — Kill running app process
-- **`android_install_apk`** — Install APK to device
-- **`android_logcat`** — Filtered logcat output
+
+#### Testing & Code Quality
+
+- **`android_test`** — Run unit or instrumented tests and parse JUnit XML reports
+
 - **`android_lint`** — Run Android Lint checks
+
+- **`audit_kotlin_hygiene`** — Flag `println`, `!!`, and TODO/FIXME markers in Kotlin files
+
+### Not Yet Available
+
+- **`android_logcat`** — Filtered logcat output
+- ProGuard/R8 integration
 
 ---
 

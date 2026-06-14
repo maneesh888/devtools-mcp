@@ -12,8 +12,19 @@
   - [x] Swift hygiene audit (print, try!, fatalError)
   - [x] File metadata audit (AI headers, copyright)
   - [x] Localization audit (available, not exposed)
-- [x] `demo_set_launch_vc` / `demo_get_launch_vc` — VC switching
 - [x] Pre-commit git hook
+
+### Android Platform
+- [x] `android_build` — Gradle build with Kotlin, Java, resource, and Gradle failure parsing
+- [x] `android_list_emulators` — List available AVDs
+- [x] `android_list_devices` — List connected adb devices
+- [x] `android_start_emulator` — Boot a configured AVD
+- [x] `android_install_apk` — Install APK on device/emulator
+- [x] `android_run_app` — Launch app on device/emulator
+- [x] `android_stop_app` — Force-stop app on device/emulator
+- [x] `android_test` — Run unit or instrumented tests and parse JUnit XML reports
+- [x] `android_lint` — Run Android Lint and parse lint XML reports
+- [x] `audit_kotlin_hygiene` — Check Kotlin for `println`, `!!`, and TODO/FIXME markers
 
 ### Infrastructure
 - [x] Platform driver architecture
@@ -23,13 +34,8 @@
 
 ## 📋 Planned
 
-### Android Platform
-- [ ] `android_build` — Gradle build with error parsing
-- [ ] `android_list_emulators` — List AVDs
-- [ ] `android_run_app` — Launch on emulator/device
-- [ ] `android_stop_app` — Kill running app
-- [ ] `android_install_apk` — Install APK
-- [ ] Code quality audits (Kotlin/Java hygiene, Android Lint)
+### Android Improvements
+- [ ] `android_logcat` — Filtered logcat output
 - [ ] ProGuard/R8 integration
 
 ### Web Platform
@@ -85,4 +91,4 @@
 
 ---
 
-*Incremental implementation: iOS complete → Android → Web → Server*
+*Incremental implementation: iOS + Android available → Web → Server*
